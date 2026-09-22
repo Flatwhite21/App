@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сетевой анализ научных авторов</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+        }
+        
+        .main-content {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        #graph-container {
+            width: 100%;
+            height: 600px;
+            background: #f8f9fa;
+            position: relative;
+        }
+        
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .node {
+            stroke: white;
+            stroke-width: 2px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .node:hover {
+            filter: brightness(1.2);
+            stroke-width: 3px;
+        }
+        
+        .node.selected {
+            stroke: #ff6b6b;
+            stroke-width: 4px;
+        }
+        
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.3;
+            stroke-width: 1px;
+        }
+        
+        .link.highlighted {
+            stroke: #667eea;
+            stroke-opacity: 0.8;
+            stroke-width: 3px;
+        }
+        
+        .node-label {
+            font-size: 11px;
+            pointer-events: none;
+            text-anchor: middle;
+            fill: #333;
+        }
+        
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .panel h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 16px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+        }
+        
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-value {
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .author-info {
+            background: #f0f4ff;
+            border-left: 3px solid #667eea;
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .author-info.hidden {
+            display: none;
+        }
+        
+        .author-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        
+        .label {
+            opacity: 0.7;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .communities-list {
+            font-size: 12px;
+        }
+        
+        .community {
+            margin-bottom: 12px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        
+        .community-title {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        
+        .community-members {
+            font-size: 11px;
+            color: #666;
+            line-height: 1.4;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .tab-button {
+            flex: 1;
+            padding: 8px;
+            background: #e0e0e0;
+            color: #333;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .tab-button.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <div class="header">
+                <h1>🌐 Анализ научных сетей авторов</h1>
+                <p>Визуализация взаимодействия исследователей через соавторство</p>
+            </div>
+            
+            <div id="graph-container">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Загрузка сетевого графа...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <!-- Статистика -->
+            <div class="panel">
+                <h3>📊 Статистика сети</h3>
+                <div class="stat-item">
+                    <span>Авторов</span>
+                    <span class="stat-value" id="stat-authors">-</span>
+                </div>
+                <div class="stat-item">
+                    <span>Связей</span>
+                    <span class="stat-value" id="stat-connections">-</span>
+                </div>
+                <div class="stat-item">
+                    <span>Статей</span>
+                    <span class="stat-value" id="stat-articles">-</span>
+                </div>
+                <div class="stat-item">
+                    <span>Плотность сети</span>
+                    <span class="stat-value" id="stat-density">-</span>
+                </div>
+                <div class="stat-item">
+                    <span>Средн. соавторов</span>
+                    <span class="stat-value" id="stat-avg">-</span>
+                </div>
+            </div>
+            
+            <!-- Информация об авторе -->
+            <div class="panel">
+                <h3>👤 Автор</h3>
+                <div class="author-info hidden" id="author-info">
+                    <div class="author-name" id="author-name"></div>
+                    <div class="info-row">
+                        <span class="label">Соавторов:</span>
+                        <span id="author-collaborators">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Публикаций:</span>
+                        <span id="author-publications">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Центральность:</span>
+                        <span id="author-centrality">0</span>
+                    </div>
+                </div>
+                <p style="font-size: 12px; color: #999; margin-top: 10px;">Нажмите на узел для подробнее</p>
+            </div>
+            
+            <!-- Научные сообщества -->
+            <div class="panel">
+                <h3>🔗 Научные школы</h3>
+                <div class="communities-list" id="communities-list">
+                    <p style="font-size: 12px; color: #999;">Загрузка...</p>
+                </div>
+            </div>
+            
+            <!-- Контроли -->
+            <div class="panel">
+                <h3>⚙️ Действия</h3>
+                <div class="controls">
+                    <button onclick="resetGraph()">↺ Сброс</button>
+                    <button onclick="toggleLabels()">T Метки</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let graphData = null;
+        let simulation = null;
+        let svg = null;
+        let selectedNode = null;
+        let showLabels = true;
+        
+        // Инициализация
+        async function init() {
+            try {
+                const [graphRes, statsRes, communitiesRes] = await Promise.all([
+                    fetch('/api/graph'),
+                    fetch('/api/stats'),
+                    fetch('/api/communities')
+                ]);
+                
+                graphData = await graphRes.json();
+                const stats = await statsRes.json();
+                const communities = await communitiesRes.json();
+                
+                updateStats(stats);
+                drawGraph();
+                updateCommunities(communities.communities);
+                
+            } catch (error) {
+                console.error('Ошибка загрузки:', error);
+                document.getElementById('graph-container').innerHTML = 
+                    '<div class="loading"><p>❌ Ошибка загрузки данных</p></div>';
+            }
+        }
+        
+        function updateStats(stats) {
+            document.getElementById('stat-authors').textContent = stats.total_authors;
+            document.getElementById('stat-connections').textContent = stats.total_connections;
+            document.getElementById('stat-articles').textContent = stats.total_articles;
+            document.getElementById('stat-density').textContent = stats.network_density.toFixed(3);
+            document.getElementById('stat-avg').textContent = stats.average_collaborators.toFixed(1);
+        }
+        
+        function drawGraph() {
+            const container = document.getElementById('graph-container');
+            container.innerHTML = '';
+            
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            // Цвета для разных авторов (простая палитра)
+            const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+            
+            svg = d3.select('#graph-container')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+            
+            // Зум и панирование
+            const g = svg.append('g');
+            const zoom = d3.zoom()
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+            svg.call(zoom);
+            
+            // Создание сил
+            simulation = d3.forceSimulation(graphData.nodes)
+                .force('link', d3.forceLink(graphData.links)
+                    .id(d => d.id)
+                    .distance(60)
+                    .strength(0.1))
+                .force('charge', d3.forceManyBody()
+                    .strength(-300)
+                    .distanceMax(200))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide()
+                    .radius(d => d.size + 5));
+            
+            // Рисование связей
+            const links = g.selectAll('line')
+                .data(graphData.links)
+                .enter()
+                .append('line')
+                .attr('class', 'link')
+                .attr('stroke-width', d => Math.sqrt(d.weight) * 1.5);
+            
+            // Рисование узлов
+            const nodes = g.selectAll('circle')
+                .data(graphData.nodes)
+                .enter()
+                .append('circle')
+                .attr('class', 'node')
+                .attr('r', d => d.size)
+                .attr('fill', (d, i) => colorScale(i))
+                .call(d3.drag()
+                    .on('start', dragStarted)
+                    .on('drag', dragged)
+                    .on('end', dragEnded))
+                .on('click', (event, d) => {
+                    event.stopPropagation();
+                    selectNode(d);
+                });
+            
+            // Подсказки
+            nodes.append('title')
+                .text(d => `${d.label}\n(${d.connections} соавторов)`);
+            
+            // Метки
+            const labels = g.selectAll('text')
+                .data(graphData.nodes)
+                .enter()
+                .append('text')
+                .attr('class', 'node-label')
+                .text(d => d.label)
+                .attr('dy', '0.3em');
+            
+            // Анимация
+            simulation.on('tick', () => {
+                links
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+                
+                nodes
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+                
+                labels
+                    .attr('x', d => d.x)
+                    .attr('y', d => d.y);
+            });
+            
+            // Клик на фон - отмена выделения
+            svg.on('click', () => {
+                selectedNode = null;
+                nodes.classed('selected', false);
+                links.classed('highlighted', false);
+                document.getElementById('author-info').classList.add('hidden');
+            });
+            
+            function dragStarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+            
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+            
+            function dragEnded(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+        
+        async function selectNode(d) {
+            selectedNode = d;
+            
+            // Выделение узла
+            d3.selectAll('.node').classed('selected', node => node.id === d.id);
+            
+            // Выделение связей
+            d3.selectAll('.link').classed('highlighted', link => 
+                link.source.id === d.id || link.target.id === d.id
+            );
+            
+            // Загрузка инфо об авторе
+            try {
+                const response = await fetch(`/api/author/${d.id}`);
+                const author = await response.json();
+                
+                document.getElementById('author-name').textContent = author.name;
+                document.getElementById('author-collaborators').textContent = author.collaborators_count;
+                document.getElementById('author-publications').textContent = author.stats.publications;
+                document.getElementById('author-centrality').textContent = author.stats.centrality.toFixed(3);
+                document.getElementById('author-info').classList.remove('hidden');
+                
+            } catch (error) {
+                console.error('Ошибка загрузки информации об авторе:', error);
+            }
+        }
+        
+        function updateCommunities(communities) {
+            const list = document.getElementById('communities-list');
+            list.innerHTML = '';
+            
+            communities.forEach((community, index) => {
+                const div = document.createElement('div');
+                div.className = 'community';
+                div.innerHTML = `
+                    <div class="community-title">Группа ${index + 1} (${community.size})</div>
+                    <div class="community-members">${community.members.join(', ')}</div>
+                `;
+                list.appendChild(div);
+            });
+        }
+        
+        function resetGraph() {
+            if (simulation) {
+                simulation.alpha(1).restart();
+            }
+            selectedNode = null;
+            d3.selectAll('.node').classed('selected', false);
+            d3.selectAll('.link').classed('highlighted', false);
+            document.getElementById('author-info').classList.add('hidden');
+        }
+        
+        function toggleLabels() {
+            showLabels = !showLabels;
+            d3.selectAll('.node-label').style('opacity', showLabels ? 1 : 0);
+        }
+        
+        // Запуск
+        init();
+    </script>
+</body>
+</html>
